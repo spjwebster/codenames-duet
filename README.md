@@ -23,3 +23,10 @@ Example to generate full-colour and low-ink PDFs with 100 key cards:
 ```zsh
 python generate.py pdf full-colour low-ink -c 100
 ```
+
+# TODO
+
+[ ] Remove hard-coded parameterisation of PDF layouts
+[ ] Relatedly: Support for non-68mm key cards
+[ ] Add support for crop marks for PDFs
+[ ] Create proper test suite for algorithm under CI
