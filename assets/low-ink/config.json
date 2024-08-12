@@ -1,0 +1,18 @@
+{
+    "tile-spacing": {
+        "x": 19,
+        "y": 19
+    },
+    "tile-offset": {
+        "x": 238,
+        "y": 238
+    },
+    "font-file": "data-latin.ttf",
+    "font-size": 70,
+    "text-offset": {
+        "x": 760,
+        "y": 1115
+    },
+    "text-align": "middle",
+    "text-colour": "#cccccc"
+}
