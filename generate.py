@@ -78,10 +78,10 @@ class Layout:
     cols:int
     card_size_mm:Dimensions
     card_spacing_mm:Dimensions
-    crop_mark_size_mm:int
-    crop_mark_colour:str
-    bleed_size_mm:int
-    bleed_colour:str
+    crop_mark_size_mm:int = None
+    crop_mark_colour:str = None
+    bleed_size_mm:int = None
+    bleed_colour:str = None
 
     def __init__(self, name:str, config:dict) -> None:
         self.name = name
@@ -132,6 +132,10 @@ class Layout:
             mm_to_px(self.card_spacing_mm.h, self.dpi)
         )
     
+    @property
+    def crop_mark_size_px(self) -> int:
+        return mm_to_px(self.crop_mark_size_mm, self.dpi)
+    
     def scale_to_card_width(self, image:Image.Image) -> Image.Image:
         # Resize images based on destination size ready for pasting
         card_width_px = mm_to_px(self.card_size_mm.w, self.dpi)
@@ -155,9 +159,21 @@ class Layout:
 
             card_positions.append(self.calc_card_coord(row, col))
 
-        print("Card coords: ", card_positions)
-
         return card_positions
+
+    def calc_crop_coords(self) -> list[Coord]:
+        # Start with card top/left marks
+        crop_coords = self.calc_card_coords()
+
+        card_size = self.card_size_px
+
+        for coord in crop_coords.copy():
+            # Add tr, bl, br coords
+            crop_coords.append(Coord(coord.x + card_size.w, coord.y))
+            crop_coords.append(Coord(coord.x, coord.y + card_size.h))
+            crop_coords.append(Coord(coord.x + card_size.w, coord.y + card_size.h))
+
+        return crop_coords
 
 def create_card_image(assets:AssetPack, grid:list[str], seed:int, side:str) -> Image:
     output_image = Image.new("RGBA", assets.bg_img.size)
@@ -199,6 +215,22 @@ def save_card_image(image:Image.Image, filename:str):
         os.makedirs(dir)
     
     image.save(filename)
+
+def draw_crop_marks(image:Image.Image, layout:Layout):
+    d = ImageDraw.Draw(image)
+
+    coords = layout.calc_crop_coords()
+
+    for coord in coords:
+        # Draw vertical line centred on coord
+        start_y = coord.y - layout.crop_mark_size_px
+        end_y = coord.y + layout.crop_mark_size_px
+        d.line([coord.x, start_y, coord.x, end_y], layout.crop_mark_colour , 1)
+        
+        # Draw horizontal line centred on coord
+        start_x = coord.x - layout.crop_mark_size_px
+        end_x = coord.x + layout.crop_mark_size_px
+        d.line([start_x, coord.y, end_x, coord.y], layout.crop_mark_colour , 1)
 
 def load_asset_packs(names:list[str]) -> list[AssetPack]:
     return [
@@ -312,6 +344,11 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                     # Create new pages
                     page_front = Image.new("RGBA", page_dimensions, '#ffffff')
                     page_back = Image.new("RGBA", page_dimensions, '#ffffff')
+
+                    if layout.crop_mark_size_mm:
+                        draw_crop_marks(page_front, layout)
+                        draw_crop_marks(page_back, layout)
+
                     pages.extend([page_front, page_back])
 
                 # Create images and resize based on destination size ready for pasting
@@ -334,6 +371,7 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                 coord = card_coords[row_index * layout.cols + back_col_index]
                 page_back.paste(image_back, (coord.x, coord.y), image_back)
         
+
         print(f"Writing {output_filename}")
         first_page, other_pages = pages[0], pages[1:]
         first_page.save(

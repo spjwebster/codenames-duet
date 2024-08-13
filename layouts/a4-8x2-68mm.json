@@ -16,8 +16,8 @@
         "h": 10
     },
     "crop-marks": {
-        "colour": "#000000",
-        "size-mm": 5
+        "colour": "#666666",
+        "size-mm": 2
     },
     "bleed": {
         "colour": "#ffffff",
