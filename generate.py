@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 import click
 
 from core import *
-from util import mm_to_px, chunk, Point, centred_pos
+from util import mm_to_px, chunk, Coords, Dimensions, centred_pos
 
 OUTPUT_DPI = 300
 A4_WIDTH_MM = 210
@@ -34,23 +34,23 @@ class AssetPack:
     font_file:str
     font_size:int
     
-    text_offset:Point
+    text_offset:Coords
     text_align:str
     text_colour:str
 
-    tile_offset:Point
-    tile_spacing:Point
+    tile_offset:Coords
+    tile_spacing:Coords
 
     def __init__(self, name:str, config:dict) -> None:
         self.name = name
         
         self.font_file = config['font-file']
         self.font_size = config['font-size']
-        self.text_offset = Point.from_dict(config['text-offset'])
+        self.text_offset = Coords.from_dict(config['text-offset'])
         self.text_colour = config['text-colour']
         self.text_align = TextAlign(config['text-align'] if 'text-align' in config else 'left')
-        self.tile_offset = Point.from_dict(config['tile-offset'])
-        self.tile_spacing = Point.from_dict(config['tile-spacing'])
+        self.tile_offset = Coords.from_dict(config['tile-offset'])
+        self.tile_spacing = Coords.from_dict(config['tile-spacing'])
 
         self.load_all()
 
@@ -69,6 +69,70 @@ class AssetPack:
             f"{self.path}/{self.font_file}", 
             self.font_size
         )
+
+class Layout:
+    name:str
+    page_size_mm:Dimensions
+    page_margins_mm:int
+    dpi:int
+    rows:int
+    cols:int
+    card_size_mm:Dimensions
+    card_spacing_mm:Dimensions
+    crop_mark_size_mm:int
+    crop_mark_colour:str
+    bleed_size_mm:int
+    bleed_colour:str
+
+    def __init__(self, name:str, config:dict) -> None:
+        self.name = name
+        
+        self.page_size_mm = Dimensions.from_dict(config['page-size-mm'])
+        self.page_margins_mm = config['page-margins-mm']
+        self.dpi = config['dpi']
+        self.rows = config['rows']
+        self.cols = config['cols']
+        self.card_size_mm = Dimensions.from_dict(config['card-size-mm'])
+        self.card_spacing_mm = Dimensions.from_dict(config['card-spacing-mm'])
+        
+        if 'crop-marks' in config:
+            self.crop_mark_size_mm = config['crop-marks']['size-mm']
+            self.crop_mark_colour = config['crop-marks']['colour']
+
+        if 'bleed' in config:
+            self.bleed_size_mm = config['bleed']['size-mm']
+            self.bleed_colour = config['bleed']['colour']        
+        
+
+    @property
+    def images_per_page(self) -> int:
+        return self.rows * self.cols
+    
+    @property 
+    def page_size_px(self) -> Dimensions:
+        return Dimensions(
+            mm_to_px(self.page_size_mm.w, self.dpi), 
+            mm_to_px(self.page_size_mm.h, self.dpi)
+        )
+    
+    @property 
+    def page_margins_px(self) -> int:
+        return mm_to_px(self.page_margins_mm, self.dpi)
+    
+    @property 
+    def card_spacing_px(self) -> Dimensions:
+        return Dimensions(
+            mm_to_px(self.card_spacing_mm.w, self.dpi), 
+            mm_to_px(self.card_spacing_mm.h, self.dpi)
+        )
+    
+    def scale_to_card_width(self, image:Image.Image) -> Image.Image:
+        # Resize images based on destination size ready for pasting
+        card_width_px = mm_to_px(self.card_size_mm.w, self.dpi)
+        image_scale_ratio = card_width_px / image.size[0]
+        card_height_px = round(image.size[1] * image_scale_ratio)
+        return image.resize((card_width_px, card_height_px))
+
 
 def create_card_image(assets:AssetPack, grid:list[str], seed:int, side:str) -> Image:
     output_image = Image.new("RGBA", assets.bg_img.size)
@@ -126,6 +190,15 @@ def load_asset_pack(name:str) -> AssetPack:
 
     return asset_pack
 
+
+def load_layout(name:str) -> Layout:
+    with open(f'layouts/{name}.json') as f:
+        config = json.loads(f.read())
+
+    return Layout(name, config)
+
+
+
 @click.group()
 def cli():
     pass
@@ -182,17 +255,13 @@ def images(count, seed, template, output_dir):
 @click.option('--count', '-c', default=100, help='Number of cards to generate.')
 @click.option('--seed', '-s', default=1, help='Starting seed.')
 @click.option('--output-dir', '-o', default='output', help='Output base directory.')
-@click.option('--dpi', '-d', default=OUTPUT_DPI, type=int, help='Output DPI.')
-def pdf(count, seed, template, output_dir, dpi):
+@click.option('--layout-config', '--layout', '-l', default='a4-8x2-68mm', help='Layout parameters.')
+def pdf(count:int, seed:int, template:list[str], output_dir:str, layout_config:str):
     asset_packs = load_asset_packs(template)
+    layout = load_layout(layout_config)
 
-    # TODO: Make configurable and support crop margins
-    images_per_page = 8
-    images_per_row = 2
-    image_spacing = Point(mm_to_px(10, dpi), mm_to_px(10, dpi))
-    page_dimensions = (mm_to_px(A4_WIDTH_MM, dpi), mm_to_px(A4_HEIGHT_MM, dpi))
+    page_dimensions = (layout.page_size_px.w, layout.page_size_px.h)
     page_middle_x = round(page_dimensions[0] / 2)
-    target_image_width = mm_to_px(68, dpi)
 
     for asset_pack in asset_packs:
         pages: list[Image.Image] = []
@@ -212,7 +281,7 @@ def pdf(count, seed, template, output_dir, dpi):
 
                 b = reverse_grid(b)
 
-                page_index = i % images_per_page
+                page_index = i % layout.images_per_page
                 if page_index == 0:
                     # Create new pages
                     page_a = Image.new("RGBA", page_dimensions, '#ffffff')
@@ -227,28 +296,26 @@ def pdf(count, seed, template, output_dir, dpi):
                 image_b = create_card_image(asset_pack, b, current_seed, 'B')
 
                 # Resize images based on destination size ready for pasting
-                image_scale_ratio = target_image_width / image_a.size[0]
-                target_image_height = round(image_a.size[1] * image_scale_ratio)
-                image_a = image_a.resize((target_image_width, target_image_height))
-                image_b = image_b.resize((target_image_width, target_image_height))
+                image_a = layout.scale_to_card_width(image_a)
+                image_b = layout.scale_to_card_width(image_b)
 
                 # Calculate current row/col indices for positioning purposes
-                row_index = floor(page_index / images_per_row)
-                col_index = page_index % images_per_row 
+                row_index = floor(page_index / layout.cols)
+                col_index = page_index % layout.cols 
 
                 # Add image_a to page_a based on page_index
-                y = mm_to_px(A4_MARGINS_MM, dpi) + row_index * (image_a.size[1] + image_spacing.y)
-                x = centred_pos(page_middle_x, col_index, images_per_row, image_a.size[0], image_spacing.x)
+                y = layout.page_margins_px + row_index * (image_a.size[1] + layout.card_spacing_px.h)
+                x = centred_pos(page_middle_x, col_index, layout.cols, image_a.size[0], layout.card_spacing_px.w)
                 page_a.paste(image_a, (x, y), image_a)
 
                 # Add to page_b based on page_index in REVERSE COLUMN ORDER
                 # NOTE: positions reversed horizontally to support long edge duplex printing
-                col_index = (images_per_row - 1) - col_index
-                x = centred_pos(page_middle_x, col_index, images_per_row, image_b.size[0], image_spacing.x)
+                col_index = (layout.cols - 1) - col_index
+                x = centred_pos(page_middle_x, col_index, layout.cols, image_b.size[0], layout.card_spacing_px.w)
                 page_b.paste(image_b, (x, y), image_b)
         
         print(f"Writing {output_filename}")
-        pages[0].save(output_filename, 'pdf', resolution=dpi, save_all=True, append_images=pages[1:])
+        pages[0].save(output_filename, 'pdf', resolution=layout.dpi, save_all=True, append_images=pages[1:])
 
 
 if __name__ == "__main__":

@@ -27,10 +27,23 @@ def chunk(arr:list, count:int):
         yield arr[i:i+count]
 
 @dataclass
-class Point:
+class Coords:
     x:int
     y:int
 
     @classmethod
-    def from_dict(cls, d:dict) -> 'Point':
+    def from_dict(cls, d:dict) -> 'Coords':
         return cls(d['x'], d['y'])
+
+
+@dataclass
+class Dimensions:
+    w:int
+    h:int
+
+    @classmethod
+    def from_dict(cls, d:dict, default=None) -> 'Dimensions':
+        return cls(
+            d.get('w', default),
+            d.get('h', default),
+        )

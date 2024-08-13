@@ -1,0 +1,25 @@
+{
+    "page-size-mm": {
+        "w": 210,
+        "h": 297
+    },
+    "page-margins-mm": 25,
+    "dpi": 300,
+    "rows": 4,
+    "cols": 2,
+    "card-size-mm": {
+        "w": 68
+    },
+    "card-spacing-mm": {
+        "w": 10,
+        "h": 10
+    },
+    "crop-marks": {
+        "colour": "#000000",
+        "size-mm": 5
+    },
+    "bleed": {
+        "colour": "#ffffff",
+        "size-mm": 3
+    }
+}
