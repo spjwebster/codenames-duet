@@ -32,4 +32,5 @@ python generate.py pdf full-colour low-ink -c 100
 - [ ] Add support for crop marks
 - [ ] Add support for solid colour bleed regions
 - [ ] Add support for bleed regions within card templates
+- [ ] Add support for loading templates/layouts by relative/absolute file path
 - [ ] Create proper test suite for algorithm under CI
