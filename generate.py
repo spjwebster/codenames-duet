@@ -263,7 +263,7 @@ def pdf(count:int, seed:int, template:list[str], output_dir:str, layout_config:s
         page_a = None
         page_b = None
 
-        output_filename = os.path.join(output_dir, f'{asset_pack.name}.pdf')
+        output_filename = os.path.join(output_dir, f'{asset_pack.name}-{layout.name}.pdf')
 
         with click.progressbar(range(0, count), length=count, label=f"Generating {output_filename}") as images:
 
