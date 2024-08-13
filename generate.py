@@ -12,6 +12,10 @@ import click
 from core import *
 from util import mm_to_px, chunk, Coords, Dimensions, centred_pos
 
+
+ASSET_DIR = 'assets'
+LAYOUTS_DIR = 'layouts'
+
 class TextAlign(Enum):
     LEFT = 'left'
     MIDDLE = 'middle'
@@ -51,7 +55,7 @@ class AssetPack:
 
     @property
     def path(self) -> str:
-        return f"assets/{self.name}"
+        return f"{ASSET_DIR}/{self.name}"
     
     def load_all(self):
         self.bg_img = Image.open(f"{self.path}/card-background.png")
@@ -200,10 +204,10 @@ def cli():
 
 @cli.command()
 @click.option('--count', '-c', default=100, help='Number of cards to generate.')
-@click.option('--seed', '-s', default=1, help='Starting seed.')
-def text(count, seed):
+@click.option('--start-seed', '--seed', '-s', default=1, help='Starting seed.')
+def text(count, start_seed):
     for i in range(0, count):
-        random.seed(seed + i)
+        random.seed(start_seed + i)
         (a, b) = generate_word_grids()        
         check_grids(a, b)
 
@@ -222,36 +226,36 @@ def text(count, seed):
 @cli.command()
 @click.argument('template', nargs=-1, required=True)
 @click.option('--count', '-c', default=100, help='Number of cards to generate.')
-@click.option('--seed', '-s', default=1, help='Starting seed.')
+@click.option('--start-seed', '--seed', '-s', default=1, help='Starting seed.')
 @click.option('--output-dir', '-o', default='output/', help='Output base directory.')
-def images(count, seed, template, output_dir):
+def images(count, start_seed, template, output_dir):
     asset_packs = load_asset_packs(template)
 
     for i in range(0, count):
-        current_seed = seed + i
-        random.seed(current_seed)
+        card_seed = start_seed + i
+        random.seed(card_seed)
 
         (a, b) = generate_word_grids()
         check_grids(a, b)
 
         for asset_pack in asset_packs:
-            print(f"Writing {asset_pack.name} {current_seed:04d}")
+            print(f"Writing {asset_pack.name} {card_seed:04d}")
             template_output_dir = os.path.join(output_dir, asset_pack.name)
 
-            image = create_card_image(asset_pack, a, current_seed, 'A')
-            save_card_image(image, f'{template_output_dir}/{current_seed}-a.png')
+            image = create_card_image(asset_pack, a, card_seed, 'A')
+            save_card_image(image, f'{template_output_dir}/{card_seed}-a.png')
 
             b = reverse_grid(b)
-            image = create_card_image(asset_pack, b, current_seed, 'B')
-            save_card_image(image, f'{template_output_dir}/{current_seed}-b.png')
+            image = create_card_image(asset_pack, b, card_seed, 'B')
+            save_card_image(image, f'{template_output_dir}/{card_seed}-b.png')
 
 @cli.command()
 @click.argument('template', nargs=-1, required=True)
 @click.option('--count', '-c', default=100, help='Number of cards to generate.')
-@click.option('--seed', '-s', default=1, help='Starting seed.')
+@click.option('--start-seed', '--seed', '-s', default=1, help='Starting seed.')
 @click.option('--output-dir', '-o', default='output', help='Output base directory.')
 @click.option('--layout-config', '--layout', '-l', default='a4-8x2-68mm', help='Layout parameters.')
-def pdf(count:int, seed:int, template:list[str], output_dir:str, layout_config:str):
+def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_config:str):
     asset_packs = load_asset_packs(template)
     layout = load_layout(layout_config)
 
@@ -260,16 +264,16 @@ def pdf(count:int, seed:int, template:list[str], output_dir:str, layout_config:s
 
     for asset_pack in asset_packs:
         pages: list[Image.Image] = []
-        page_a = None
-        page_b = None
+        page_front = None
+        page_back = None
 
         output_filename = os.path.join(output_dir, f'{asset_pack.name}-{layout.name}.pdf')
 
         with click.progressbar(range(0, count), length=count, label=f"Generating {output_filename}") as images:
 
             for i in images:
-                current_seed = seed + i
-                random.seed(current_seed)
+                card_seed = start_seed + i
+                random.seed(card_seed)
 
                 (a, b) = generate_word_grids()
                 check_grids(a, b)
@@ -279,38 +283,44 @@ def pdf(count:int, seed:int, template:list[str], output_dir:str, layout_config:s
                 page_index = i % layout.images_per_page
                 if page_index == 0:
                     # Create new pages
-                    page_a = Image.new("RGBA", page_dimensions, '#ffffff')
-                    pages.append(page_a)
-                    page_b = Image.new("RGBA", page_dimensions, '#ffffff')
-                    pages.append(page_b)
+                    page_front = Image.new("RGBA", page_dimensions, '#ffffff')
+                    page_back = Image.new("RGBA", page_dimensions, '#ffffff')
+                    pages.extend([page_front, page_back])
 
                 # TODO: Refactor to DRY between images A and B
 
-                # Create images
-                image_a = create_card_image(asset_pack, a, current_seed, 'A')
-                image_b = create_card_image(asset_pack, b, current_seed, 'B')
-
-                # Resize images based on destination size ready for pasting
-                image_a = layout.scale_to_card_width(image_a)
-                image_b = layout.scale_to_card_width(image_b)
+                # Create images and resize based on destination size ready for pasting
+                image_front = layout.scale_to_card_width(
+                    create_card_image(asset_pack, a, card_seed, 'A')
+                )
+                image_back = layout.scale_to_card_width(
+                    create_card_image(asset_pack, b, card_seed, 'B')
+                )
 
                 # Calculate current row/col indices for positioning purposes
                 row_index = floor(page_index / layout.cols)
                 col_index = page_index % layout.cols 
 
-                # Add image_a to page_a based on page_index
-                y = layout.page_margins_px + row_index * (image_a.size[1] + layout.card_spacing_px.h)
-                x = centred_pos(page_middle_x, col_index, layout.cols, image_a.size[0], layout.card_spacing_px.w)
-                page_a.paste(image_a, (x, y), image_a)
+                # Add card front to front page based on page_index
+                y = layout.page_margins_px + row_index * (image_front.size[1] + layout.card_spacing_px.h)
+                x = centred_pos(page_middle_x, col_index, layout.cols, image_front.size[0], layout.card_spacing_px.w)
+                page_front.paste(image_front, (x, y), image_front)
 
-                # Add to page_b based on page_index in REVERSE COLUMN ORDER
+                # Add card back to back page based on page_index in REVERSE COLUMN ORDER
                 # NOTE: positions reversed horizontally to support long edge duplex printing
                 col_index = (layout.cols - 1) - col_index
-                x = centred_pos(page_middle_x, col_index, layout.cols, image_b.size[0], layout.card_spacing_px.w)
-                page_b.paste(image_b, (x, y), image_b)
+                x = centred_pos(page_middle_x, col_index, layout.cols, image_back.size[0], layout.card_spacing_px.w)
+                page_back.paste(image_back, (x, y), image_back)
         
         print(f"Writing {output_filename}")
-        pages[0].save(output_filename, 'pdf', resolution=layout.dpi, save_all=True, append_images=pages[1:])
+        first_page, other_pages = pages[0], pages[1:]
+        first_page.save(
+            output_filename, 
+            'pdf', 
+            resolution=layout.dpi, 
+            save_all=True, 
+            append_images=other_pages
+        )
 
 
 if __name__ == "__main__":
