@@ -26,7 +26,10 @@ python generate.py pdf full-colour low-ink -c 100
 
 # TODO
 
-- [ ] Remove hard-coded parameterisation of PDF layouts
-- [ ] Relatedly: Support for non-68mm key cards
-- [ ] Add support for crop marks for PDFs
+- [x] Remove hard-coded parameterisation of PDF layouts
+- [x] Relatedly: Support for non-68mm key cards
+- [ ] Support fit-to-height, fit-within and exact-fit card sizing
+- [ ] Add support for crop marks
+- [ ] Add support for solid colour bleed regions
+- [ ] Add support for bleed regions within card templates
 - [ ] Create proper test suite for algorithm under CI
