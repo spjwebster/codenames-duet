@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 import click
 
 from core import *
-from util import mm_to_px, chunk, Coords, Dimensions, centred_pos
+from util import mm_to_px, chunk, Coord, Dimensions, centred_pos
 
 
 ASSET_DIR = 'assets'
@@ -33,23 +33,23 @@ class AssetPack:
     font_file:str
     font_size:int
     
-    text_offset:Coords
+    text_offset:Coord
     text_align:str
     text_colour:str
 
-    tile_offset:Coords
-    tile_spacing:Coords
+    tile_offset:Coord
+    tile_spacing:Coord
 
     def __init__(self, name:str, config:dict) -> None:
         self.name = name
         
         self.font_file = config['font-file']
         self.font_size = config['font-size']
-        self.text_offset = Coords.from_dict(config['text-offset'])
+        self.text_offset = Coord.from_dict(config['text-offset'])
         self.text_colour = config['text-colour']
         self.text_align = TextAlign(config['text-align'] if 'text-align' in config else 'left')
-        self.tile_offset = Coords.from_dict(config['tile-offset'])
-        self.tile_spacing = Coords.from_dict(config['tile-spacing'])
+        self.tile_offset = Coord.from_dict(config['tile-offset'])
+        self.tile_spacing = Coord.from_dict(config['tile-spacing'])
 
         self.load_all()
 
@@ -104,7 +104,7 @@ class Layout:
         
 
     @property
-    def images_per_page(self) -> int:
+    def cards_per_page(self) -> int:
         return self.rows * self.cols
     
     @property 
@@ -112,6 +112,13 @@ class Layout:
         return Dimensions(
             mm_to_px(self.page_size_mm.w, self.dpi), 
             mm_to_px(self.page_size_mm.h, self.dpi)
+        )
+    
+    @property 
+    def card_size_px(self) -> Dimensions:
+        return Dimensions(
+            mm_to_px(self.card_size_mm.w, self.dpi), 
+            mm_to_px(self.card_size_mm.h, self.dpi)
         )
     
     @property 
@@ -132,6 +139,25 @@ class Layout:
         card_height_px = round(image.size[1] * image_scale_ratio)
         return image.resize((card_width_px, card_height_px))
 
+    def calc_card_coord(self, row:int, col:int) -> Coord:
+        page_middle_x = round(self.page_size_px.w / 2)
+        y = self.page_margins_px + row * (self.card_size_px.h + self.card_spacing_px.h)
+        x = centred_pos(page_middle_x, col, self.cols, self.card_size_px.w, self.card_spacing_px.w)
+
+        return Coord(x, y)
+
+    def calc_card_coords(self) -> list[Coord]:
+        card_positions = []
+
+        for card_num in range(0, self.cards_per_page):
+            row = floor(card_num / self.cols)
+            col = card_num % self.cols
+
+            card_positions.append(self.calc_card_coord(row, col))
+
+        print("Card coords: ", card_positions)
+
+        return card_positions
 
 def create_card_image(assets:AssetPack, grid:list[str], seed:int, side:str) -> Image:
     output_image = Image.new("RGBA", assets.bg_img.size)
@@ -260,7 +286,8 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
     layout = load_layout(layout_config)
 
     page_dimensions = (layout.page_size_px.w, layout.page_size_px.h)
-    page_middle_x = round(page_dimensions[0] / 2)
+
+    card_coords = layout.calc_card_coords()
 
     for asset_pack in asset_packs:
         pages: list[Image.Image] = []
@@ -280,14 +307,12 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
 
                 b = reverse_grid(b)
 
-                page_index = i % layout.images_per_page
+                page_index = i % layout.cards_per_page
                 if page_index == 0:
                     # Create new pages
                     page_front = Image.new("RGBA", page_dimensions, '#ffffff')
                     page_back = Image.new("RGBA", page_dimensions, '#ffffff')
                     pages.extend([page_front, page_back])
-
-                # TODO: Refactor to DRY between images A and B
 
                 # Create images and resize based on destination size ready for pasting
                 image_front = layout.scale_to_card_width(
@@ -297,20 +322,17 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                     create_card_image(asset_pack, b, card_seed, 'B')
                 )
 
-                # Calculate current row/col indices for positioning purposes
-                row_index = floor(page_index / layout.cols)
-                col_index = page_index % layout.cols 
-
                 # Add card front to front page based on page_index
-                y = layout.page_margins_px + row_index * (image_front.size[1] + layout.card_spacing_px.h)
-                x = centred_pos(page_middle_x, col_index, layout.cols, image_front.size[0], layout.card_spacing_px.w)
-                page_front.paste(image_front, (x, y), image_front)
+                coord = card_coords[page_index]
+                page_front.paste(image_front, (coord.x, coord.y), image_front)
 
                 # Add card back to back page based on page_index in REVERSE COLUMN ORDER
                 # NOTE: positions reversed horizontally to support long edge duplex printing
-                col_index = (layout.cols - 1) - col_index
-                x = centred_pos(page_middle_x, col_index, layout.cols, image_back.size[0], layout.card_spacing_px.w)
-                page_back.paste(image_back, (x, y), image_back)
+                row_index = floor(page_index / layout.cols)
+                col_index = page_index % layout.cols 
+                back_col_index = (layout.cols - 1) - col_index
+                coord = card_coords[row_index * layout.cols + back_col_index]
+                page_back.paste(image_back, (coord.x, coord.y), image_back)
         
         print(f"Writing {output_filename}")
         first_page, other_pages = pages[0], pages[1:]
