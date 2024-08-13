@@ -12,11 +12,6 @@ import click
 from core import *
 from util import mm_to_px, chunk, Coords, Dimensions, centred_pos
 
-OUTPUT_DPI = 300
-A4_WIDTH_MM = 210
-A4_HEIGHT_MM = 297
-A4_MARGINS_MM = 25
-
 class TextAlign(Enum):
     LEFT = 'left'
     MIDDLE = 'middle'
