@@ -343,9 +343,9 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
 
         output_filename = os.path.join(output_dir, f'{asset_pack.name}-{layout.name}.pdf')
 
-        with click.progressbar(range(0, count), length=count, label=f"Generating {output_filename}") as images:
+        with click.progressbar(range(0, count), length=count, label=f"Generating {output_filename}") as image_indices:
 
-            for i in images:
+            for i in image_indices:
                 card_seed = start_seed + i
                 random.seed(card_seed)
 
@@ -355,7 +355,8 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                 b = reverse_grid(b)
 
                 page_index = i % layout.cards_per_page
-                if page_index == 0:
+                is_new_page = page_index == 0
+                if is_new_page:
                     # Create new pages
                     page_front = Image.new("RGBA", page_dimensions, '#ffffff')
                     page_back = Image.new("RGBA", page_dimensions, '#ffffff')
@@ -363,10 +364,6 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                     if layout.bleed_size_mm:
                         draw_bleed_zones(page_front, layout)
                         draw_bleed_zones(page_back, layout)
-
-                    if layout.crop_mark_size_mm:
-                        draw_crop_marks(page_front, layout)
-                        draw_crop_marks(page_back, layout)
 
                     pages.extend([page_front, page_back])
 
@@ -377,7 +374,6 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                 image_back = layout.scale_to_card_width(
                     create_card_image(asset_pack, b, card_seed, 'B')
                 )
-
 
                 # Add card front to front page based on page_index
                 coord = card_coords[page_index]
@@ -391,6 +387,13 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                 coord = card_coords[row_index * layout.cols + back_col_index]
                 page_back.paste(image_back, (coord.x, coord.y), image_back)
         
+                # Draw crop marks last to ensure they're not overdrawn
+                is_last_image = i == count - 1
+                is_last_in_page = is_last_image or page_index == layout.cards_per_page - 1
+                if is_last_in_page and layout.crop_mark_size_mm:
+                    draw_crop_marks(page_front, layout)
+                    draw_crop_marks(page_back, layout)
+
 
         print(f"Writing {output_filename}")
         first_page, other_pages = pages[0], pages[1:]
