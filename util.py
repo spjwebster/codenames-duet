@@ -35,6 +35,13 @@ class Coord:
     def from_dict(cls, d:dict) -> 'Coord':
         return cls(d['x'], d['y'])
 
+    def translate(self, dx:int, dy:int):
+        self.x += dx
+        self.y += dy
+
+    def translated(self, dx:int, dy:int) -> 'Coord':
+        return Coord(self.x + dx, self.y + dy)
+
 
 @dataclass
 class Dimensions:

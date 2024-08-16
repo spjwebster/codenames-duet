@@ -136,6 +136,11 @@ class Layout:
     def crop_mark_size_px(self) -> int:
         return mm_to_px(self.crop_mark_size_mm, self.dpi)
     
+    @property
+    def bleed_size_px(self) -> int:
+        return mm_to_px(self.bleed_size_mm, self.dpi)
+    
+    
     def scale_to_card_width(self, image:Image.Image) -> Image.Image:
         # Resize images based on destination size ready for pasting
         card_width_px = mm_to_px(self.card_size_mm.w, self.dpi)
@@ -216,8 +221,8 @@ def save_card_image(image:Image.Image, filename:str):
     
     image.save(filename)
 
-def draw_crop_marks(image:Image.Image, layout:Layout):
-    d = ImageDraw.Draw(image)
+def draw_crop_marks(page:Image.Image, layout:Layout):
+    d = ImageDraw.Draw(page)
 
     coords = layout.calc_crop_coords()
 
@@ -231,6 +236,16 @@ def draw_crop_marks(image:Image.Image, layout:Layout):
         start_x = coord.x - layout.crop_mark_size_px
         end_x = coord.x + layout.crop_mark_size_px
         d.line([start_x, coord.y, end_x, coord.y], layout.crop_mark_colour , 1)
+
+def draw_bleed_zones(page:Image.Image, layout:Layout):
+    d = ImageDraw.Draw(page)
+    card_coords = layout.calc_card_coords()
+
+    for tl in card_coords:
+        br = tl.translated(layout.card_size_px.w + layout.bleed_size_px, layout.card_size_px.h + layout.bleed_size_px)
+        tl.translate(-layout.bleed_size_px, -layout.bleed_size_px)
+        d.rectangle([tl.x, tl.y, br.x, br.y], layout.bleed_colour)
+
 
 def load_asset_packs(names:list[str]) -> list[AssetPack]:
     return [
@@ -345,6 +360,10 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                     page_front = Image.new("RGBA", page_dimensions, '#ffffff')
                     page_back = Image.new("RGBA", page_dimensions, '#ffffff')
 
+                    if layout.bleed_size_mm:
+                        draw_bleed_zones(page_front, layout)
+                        draw_bleed_zones(page_back, layout)
+
                     if layout.crop_mark_size_mm:
                         draw_crop_marks(page_front, layout)
                         draw_crop_marks(page_back, layout)
@@ -358,6 +377,7 @@ def pdf(count:int, start_seed:int, template:list[str], output_dir:str, layout_co
                 image_back = layout.scale_to_card_width(
                     create_card_image(asset_pack, b, card_seed, 'B')
                 )
+
 
                 # Add card front to front page based on page_index
                 coord = card_coords[page_index]

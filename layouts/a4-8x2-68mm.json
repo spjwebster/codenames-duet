@@ -16,11 +16,11 @@
         "h": 10
     },
     "crop-marks": {
-        "colour": "#666666",
+        "colour": "#ffffff",
         "size-mm": 2
     },
     "bleed": {
-        "colour": "#ffffff",
+        "colour": "#7B6557",
         "size-mm": 3
     }
 }
